@@ -32,7 +32,7 @@ B = 400; % Number of impulse response blocks - 1. TODO: experiment.
 % Minimum gain per frequency. TODO: Should be frequency specific? Experiment.
 minGain = zeros(frequencyCount, 1);
 bias = zeros(frequencyCount, B);
-bias(:) = 1.05; % TODO: Experiment
+bias(:) = 1.01; % TODO: Experiment
 maxHEstimate = zeros(frequencyCount, B);
 % TODO: Experiment - should 'reflect real world systems' -
 % e.g. exponential decay / given impulse response. (Page 11 - MaxValue.)
@@ -54,7 +54,7 @@ S = zeros(size(M)); % Dry signal frequency-domain vectors.
 R = zeros(size(M)); % Reverberated components frequency-domain vectors.
 
 H_pow = zeros(frequencyCount, B); % Reverberant system frequency response estimate blocks - power.
-H_pow = maxHEstimate;
+H_pow = maxHEstimate / 2;
 pow = @(x) abs(x).^2;
 
 previousSFramesPower = zeros(frequencyCount, B); % Most recent previous frame is first.
@@ -82,7 +82,7 @@ for inputFrameIndex = 1:frameCount
     end
     H_pow_all(inputFrameIndex, :, :) = H_pow;
     
-    newG_S = 1 - (sum(previousSFramesPower .* H_pow)) ./ inputFramePower;
+    newG_S = 1 - (sum(previousSFramesPower .* H_pow, 2)) ./ inputFramePower;
     %G_S = sqrt(G_S);
     % Enforce a minimum gain for each frequency.
     newG_S = max([newG_S minGain], [], 2);
@@ -221,7 +221,9 @@ clear F;
 frameHop = 5;
 movieFrameCount = floor(frameCount / frameHop);
 F(movieFrameCount) = struct('cdata',[],'colormap',[]);
-image = spectrogramPlot(squeeze(H_pow_all(1, :, :)), t, w);
+stftHop = stftWindowSize - overlapSamples;
+t2 = stftHop*(1:B);
+image = spectrogramPlot(squeeze(H_pow_all(1, :, :)), t2, w);
 for i = 1:frameHop:frameCount
     image.CData = squeeze(pow2db(H_pow_all(i, :, :)));
     drawnow();
@@ -259,8 +261,8 @@ spectrogram(signal, window, overlapSamples, 'yaxis', 'power');
 
 %% Debug impulse response read
 irDebug = readImpulseResponse('audio/stalbans_a_mono.wav', B, window, overlapSamples);
-spectrogramPlot(irDebug, w, t);
-spectrogramPlot(H_pow, w, t);
+spectrogramPlot(irDebug, t, w);
+spectrogramPlot(H_pow, t, w);
 
 %%
 function output = reconstruct(spectrum, window, overlapSamples, outputLength)
