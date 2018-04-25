@@ -215,20 +215,23 @@ scaledImpulseResponse = zpk2tf(z_minP, p, newK);
 % Now the inverse filter's poles are guaranteed to be in the unit circle, so it's stable.
 %%
 % Draw movie frames (very slow - run in Matlab rather than Live Editor).
-F(frameCount) = struct('cdata',[],'colormap',[]);
+clear F;
+frameHop = 5;
+movieFrameCount = floor(frameCount / frameHop);
+F(movieFrameCount) = struct('cdata',[],'colormap',[]);
 image = spectrogramPlot(squeeze(H_pow_all(1, :, :)), t, w);
-for i = 1:frameCount
+for i = 1:frameHop:frameCount
     image.CData = squeeze(H_pow_all(i, :, :));
     drawnow();
-    F(i) = getframe(gcf);
+    F((i - 1)/ frameHop + 1) = getframe(gcf);
 end
 %%
-% Display movie interactively (slow).
+% Display movie interactively.
 figure;
 movie(F);
 %%
 % Write movie to file.
-video = VideoWriter('reverb.avi');
+video = VideoWriter('estimate_evolution.avi');
 open(video);
 writeVideo(video, F);
 close(video)
@@ -239,6 +242,10 @@ stftHop = stftWindowSize - overlapSamples;
 impulseResponseLengthSamples = stftHop * (B+1) + overlapSamples;
 impulseResponseLengthSeconds = impulseResponseLengthSamples / fs;
 impulseResponseLengthSeconds
+
+%%
+audiowrite('results/dry_B400_g03_a02_m09.wav', dry ./ (max(abs(dry))), fs);
+audiowrite('results/reverberant_B400_g03_a02_m09.wav', reverberant ./ (max(abs(reverberant))), fs);
 
 %%
 function output = reconstruct(spectrum, window, overlapSamples, outputLength)
