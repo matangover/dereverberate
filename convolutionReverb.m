@@ -1,7 +1,7 @@
 %% Load the input file and impulse response.
-inputFilename = 'singing.mp3';
+inputFilename = 'audio/singing.mp3';
 % inputFilename = 'mozart.mp3';
-irFilename = 'stalbans_a_mono.wav';
+irFilename = 'audio/stalbans_a_mono.wav';
 
 [signal, fs] = audioread(inputFilename);
 [impulseResponse, irFs] = audioread(irFilename);
