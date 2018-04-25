@@ -1,6 +1,6 @@
 %% Dereverberation
 
-inputFilename = 'EchoSample.mp3';
+inputFilename = 'audio/EchoSample.mp3';
 % inputFilename = 'stalbans_omni_sing.mp3';
 % inputFilename = 'mozart_reverb_short.mp3';
 [signal, fs] = audioread(inputFilename);
@@ -9,14 +9,13 @@ signal = signal(:, 1);
 inputLength = length(signal);
 %%
 % Compute the signal's STFT with nfft=1024
-% and a 50% overlapping Hann window.
 stftWindowSize = 1024;
-overlap = 0.75; % In the original paper they used 0.5, but this makes artifacts in reconstruction. Why?
+overlap = 0.75; % In the paper he used 0.5 (50% overlap).
 overlapSamples = overlap*stftWindowSize;
 % TODO: zero padding?
-window = hann(stftWindowSize);
-[M,w,t] = spectrogram(signal, window, overlapSamples); %, fs)
-spectrogram(signal, hann(stftWindowSize), overlap*stftWindowSize, 'yaxis');
+window = hann(stftWindowSize, 'periodic');
+[M,w,t] = spectrogram(signal, window, overlapSamples);
+spectrogram(signal, window, overlapSamples, 'yaxis');
 title("Input - before processing");
 % M ('microphone') - input signal (reverberated) frequency-domain vectors.
 % Rows - frequencies, Columns - time frames (middle time-point)
@@ -26,8 +25,9 @@ title("Input - before processing");
 
 % Impulse response block length - has to be 'sufficiently small'
 % TODO: experiment with value. Is this really the same as the window size?
-D = stftWindowSize;
-B = 50; % Number of impulse response blocks - 1. TODO: experiment.
+D = stftWindowSize - overlapSamples;
+B = 400; % Number of impulse response blocks - 1. TODO: experiment.
+
 % Minimum gain per frequency. TODO: Should be frequency specific? Experiment.
 minGain = zeros(frequencyCount, 1);
 bias = zeros(frequencyCount, B);
@@ -35,7 +35,19 @@ bias(:) = 1.05; % TODO: Experiment
 maxHEstimate = zeros(frequencyCount, B);
 % TODO: Experiment - should 'reflect real world systems' -
 % e.g. exponential decay / given impulse response. (Page 11 - MaxValue.)
+maxHEstimate(:) = readImpulseResponse('audio/stalbans_a_mono.wav', B, window, overlapSamples);
 maxHEstimate(:) = 0.9;
+% From the paper - gamma (Page 10). Lower means more smoothing between
+% gains vectors of consecutive frames. Value 0-1 (1 = no smoothing).
+gainSmoothingFactor = zeros(frequencyCount, 1);
+gainSmoothingFactor(:) = 0.3;
+
+% From the paper - alpha (Page 11). Lower means less smoothing between
+% magnitude response block estimates on consecutive frames.
+% Value 0-1 (0 = no smoothing).
+magnitudeSmoothingFactor = zeros(frequencyCount, B);
+magnitudeSmoothingFactor(:) = 0.2;
+
 %%
 S = zeros(size(M)); % Dry signal frequency-domain vectors.
 R = zeros(size(M)); % Reverberated components frequency-domain vectors.
@@ -48,6 +60,9 @@ previousMFramesPower = ones(frequencyCount, B); % Most recent previous frame is 
 
 C = zeros(size(H_pow)); % Reverberant system frequency response power estimate blocks - temporary.
 H_pow_all = zeros([frameCount size(H_pow)]);
+% Initially, all components are estimated to belong to the dry signal.
+G_S = ones(frequencyCount, 1);
+G_R = zeros(frequencyCount, 1);
 
 for inputFrameIndex = 1:frameCount
     inputFrame = M(:, inputFrameIndex);
@@ -60,15 +75,18 @@ for inputFrameIndex = 1:frameCount
         newEstimates(unchanged) = H_pow(unchanged, blockIndex) .* bias(unchanged, blockIndex) + eps;
         C(:, blockIndex) = min(newEstimates, maxHEstimate(:, blockIndex));
         % TODO: Temporal smoothing (Page 11).
-        H_pow(:, blockIndex) = C(:, blockIndex);
+        alpha = magnitudeSmoothingFactor(:, blockIndex);
+        H_pow(:, blockIndex) = alpha .* H_pow(:, blockIndex) + (1-alpha) .* C(:, blockIndex);
     end
     H_pow_all(inputFrameIndex, :, :) = H_pow;
     
-    G_S = 1 - (sum(previousSFramesPower .* H_pow)) ./ inputFramePower;
+    newG_S = 1 - (sum(previousSFramesPower .* H_pow)) ./ inputFramePower;
     %G_S = sqrt(G_S);
     % Enforce a minimum gain for each frequency.
-    G_S = max([G_S minGain], [], 2);
-    G_R = 1 - G_S;
+    newG_S = max([newG_S minGain], [], 2);
+    G_S = (1-gainSmoothingFactor).*G_S + gainSmoothingFactor.*newG_S;
+    newG_R = 1 - G_S;
+    G_R = (1-gainSmoothingFactor).*G_R + gainSmoothingFactor.*newG_R;
     % TODO: Apply gain smooting over time to G_S and G_R.
     S(:, inputFrameIndex) = G_S .* inputFrame;
     R(:, inputFrameIndex) = G_R .* inputFrame;
@@ -102,6 +120,11 @@ reverberant = reconstruct(R, window, overlapSamples, inputLength);
 soundsc(reverberant, fs);
 spectrogram(reverberant, window, overlapSamples, 'yaxis');
 title("Reverberant components - reconstructed");
+%% Low-pass filter reverberant components
+% Doesn't help.
+reverberantFiltered = filter(lowpassfilter, reverberant);
+spectrogram(reverberantFiltered, window, overlapSamples, 'yaxis');
+soundsc(reverberantFiltered, fs);
 %%
 reverbConstant = 1;
 %reverbConstant = 2;
@@ -211,6 +234,13 @@ writeVideo(video, F);
 close(video)
 
 %%
+% Length of estimated impulse response: 
+stftHop = stftWindowSize - overlapSamples;
+impulseResponseLengthSamples = stftHop * (B+1) + overlapSamples;
+impulseResponseLengthSeconds = impulseResponseLengthSamples / fs;
+impulseResponseLengthSeconds
+
+%%
 function output = reconstruct(spectrum, window, overlapSamples, outputLength)
     stftWindowSize = length(window);
     [frequencyCount, frameCount] = size(spectrum);
@@ -233,4 +263,15 @@ function image = spectrogramPlot(spectrum, t, w)
     image = imagesc(t, w, 10*log10(abs(spectrum)+eps));
     image.Parent.YDir = 'normal';
     colorbar();
+end
+
+%%
+function blocks = readImpulseResponse(irFilename, blockCount, window, overlapSamples)
+
+    impulseResponse = audioread(irFilename);
+    %assert(irFs == fs);
+    allBlocks = spectrogram(impulseResponse, window, overlapSamples);
+    pow = @(x) abs(x).^2;
+    blocks = pow(allBlocks(:, 1:blockCount));
+
 end
