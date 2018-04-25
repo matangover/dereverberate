@@ -1,17 +1,22 @@
+%% Load the input file and impulse response.
 inputFilename = 'singing.mp3';
+% inputFilename = 'mozart.mp3';
 irFilename = 'stalbans_a_mono.wav';
 
 [signal, fs] = audioread(inputFilename);
 [impulseResponse, irFs] = audioread(irFilename);
-
 assert(fs == irFs);
+
+% Truncate for faster processing.
 impulseResponse = impulseResponse(1:50000);
+
 figure;
 plot(impulseResponse);
-%zeroPaddedInput = [signal; zeros(length(impulseResponse), 1)];
+
+%% Apply reverb using convolution.
 reverberated = conv(signal, impulseResponse);
 
-%%
+%% Plot and play the original and reverberated sound.
 
 paddedSignal = [signal; zeros(length(impulseResponse) - 1, 1)];
 %subplot(2,1,1);
@@ -24,7 +29,7 @@ legend('Reverberated', 'Original (dry)');
 
 soundsc([signal; reverberated], fs);
 
-%% inverse filtering - frequency domain
+%% Inverse filtering - frequency domain
 nfft = length(reverberated);
 hf = fft(impulseResponse, nfft);
 spectrum = fft(reverberated);
@@ -36,7 +41,7 @@ spectrum = spectrum ./ hf;
 inverseFiltered = real(ifft(spectrum));
 soundsc(inverseFiltered, fs);
 
-%%
+%% Plot the signals frequency responses
 figure;
 freqz(reverberated);
 title('Reverberated');
@@ -49,8 +54,8 @@ figure;
 freqz(impulseResponse);
 title('Impulse response');
 
-%% inverse filtering - time domain
-% doesn't work
+%% Inverse filtering - time domain
+% Doesn't work.
 [dry, r] = deconv(reverberated, impulseResponse);
 
 figure;
@@ -67,6 +72,9 @@ freqz(impulseResponse);
 
 inverseFiltered = filter(1, impulseResponse, reverberated);
 freqz(1, impulseResponse);
+% The inverse filter is not stable because the original filter
+% is not minimal phase. The original filter has zeros on or outside of the
+% unit circle.
 isstable(1, impulseResponse)
 figure;
 plot(inverseFiltered);
