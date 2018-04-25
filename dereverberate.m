@@ -14,7 +14,8 @@ overlap = 0.75; % In the paper he used 0.5 (50% overlap).
 overlapSamples = overlap*stftWindowSize;
 % TODO: zero padding?
 window = hann(stftWindowSize, 'periodic');
-[M,w,t] = spectrogram(signal, window, overlapSamples);
+% Specify empty Fs so that t is returned in samples and w in rad/sample.
+[M,w,t] = spectrogram(signal, window, overlapSamples, [], []); 
 spectrogram(signal, window, overlapSamples, 'yaxis');
 title("Input - before processing");
 % M ('microphone') - input signal (reverberated) frequency-domain vectors.
@@ -36,7 +37,7 @@ maxHEstimate = zeros(frequencyCount, B);
 % TODO: Experiment - should 'reflect real world systems' -
 % e.g. exponential decay / given impulse response. (Page 11 - MaxValue.)
 maxHEstimate(:) = readImpulseResponse('audio/stalbans_a_mono.wav', B, window, overlapSamples);
-maxHEstimate(:) = 0.9;
+%maxHEstimate(:) = 0.9;
 % From the paper - gamma (Page 10). Lower means more smoothing between
 % gains vectors of consecutive frames. Value 0-1 (1 = no smoothing).
 gainSmoothingFactor = zeros(frequencyCount, 1);
@@ -53,6 +54,7 @@ S = zeros(size(M)); % Dry signal frequency-domain vectors.
 R = zeros(size(M)); % Reverberated components frequency-domain vectors.
 
 H_pow = zeros(frequencyCount, B); % Reverberant system frequency response estimate blocks - power.
+H_pow = maxHEstimate;
 pow = @(x) abs(x).^2;
 
 previousSFramesPower = zeros(frequencyCount, B); % Most recent previous frame is first.
@@ -113,6 +115,7 @@ title("Final frequency response estimate");
 %%
 dry = reconstruct(S, window, overlapSamples, inputLength);
 soundsc(dry, fs);
+figure;
 spectrogram(dry, window, overlapSamples, 'yaxis');
 title("Dry - reconstructed")
 %%
@@ -213,15 +216,14 @@ end
 
 scaledImpulseResponse = zpk2tf(z_minP, p, newK);
 % Now the inverse filter's poles are guaranteed to be in the unit circle, so it's stable.
-%%
-% Draw movie frames (very slow - run in Matlab rather than Live Editor).
+%% Draw movie frames
 clear F;
 frameHop = 5;
 movieFrameCount = floor(frameCount / frameHop);
 F(movieFrameCount) = struct('cdata',[],'colormap',[]);
 image = spectrogramPlot(squeeze(H_pow_all(1, :, :)), t, w);
 for i = 1:frameHop:frameCount
-    image.CData = squeeze(H_pow_all(i, :, :));
+    image.CData = squeeze(pow2db(H_pow_all(i, :, :)));
     drawnow();
     F((i - 1)/ frameHop + 1) = getframe(gcf);
 end
@@ -246,6 +248,19 @@ impulseResponseLengthSeconds
 %%
 audiowrite('results/dry_B400_g03_a02_m09.wav', dry ./ (max(abs(dry))), fs);
 audiowrite('results/reverberant_B400_g03_a02_m09.wav', reverberant ./ (max(abs(reverberant))), fs);
+
+%% Testing spectrogramPlot
+
+spectrogramPlot(M, t, w);
+figure;
+spectrogram(signal, window, overlapSamples, 'yaxis', 'power');
+%%
+[M2,w2,t2] = spectrogram(signal, window, overlapSamples, [], []);
+
+%% Debug impulse response read
+irDebug = readImpulseResponse('audio/stalbans_a_mono.wav', B, window, overlapSamples);
+spectrogramPlot(irDebug, w, t);
+spectrogramPlot(H_pow, w, t);
 
 %%
 function output = reconstruct(spectrum, window, overlapSamples, outputLength)
