@@ -114,7 +114,7 @@ spectrogramPlot(H_pow, t, w);
 title("Final frequency response estimate");
 %%
 dry = reconstruct(S, window, overlapSamples, inputLength);
-soundsc(dry, fs);
+soundsc([signal; dry], fs);
 figure;
 spectrogram(dry, window, overlapSamples, 'yaxis');
 title("Dry - reconstructed")
