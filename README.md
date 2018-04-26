@@ -7,7 +7,6 @@ Note that this algorithm is patented (US Patent [8,036,767 B2](https://patents.g
 
 See `dereverberate.m` for the algorithm implementation in MATLAB code. See `audio` for input files used to evaluate the algorithm and the implementation.
 
-Here is a spectrogram representation of an example input (`audio/EchoSample.mp3`) and the algorithm's results on that input:
+Here is a spectrogram representation of an example input (`audio/EchoSample.mp3`) and the algorithm's results on that input. To hear how it sounds, see the `results` folder.
 
 ![Algorithm results](results/speech/results.png?raw=true)
-To hear the results, see the `results` folder.
